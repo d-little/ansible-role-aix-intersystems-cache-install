@@ -4,7 +4,7 @@
 
 ## How to Use
 
-- Download Intersystems Cache distro and place in `{{ cache_install.local_files_dir }}` (default: `/tmp/cache/`)
+- Download Intersystems Cache distro and place in `{{ cache_install.local_files_dir }}` (default: `./files/`)
 - Assumes you have a working Yum configuration (requires rsync)
 - Uses [Cache Install parameters](https://cedocs.intersystems.com/latest/csp/docbook/DocBook.UI.Page.cls?KEY=GCI_unix#GCI_unix_install_unattended)
 - Templates and uses a [Cache Installation Manifest](https://cedocs.intersystems.com/latest/csp/docbook/DocBook.UI.Page.cls?KEY=GCI_manifest) file
