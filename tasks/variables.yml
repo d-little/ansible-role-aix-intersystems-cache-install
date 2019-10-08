@@ -1,0 +1,38 @@
+# Merge
+- name: Merge 'Recommended Default Settings'
+  set_fact:
+    __cache_install: >
+      {{
+          __cache_install | deep_combine( __cache_install_recomended| default({}, true) )
+      }}
+  when: cache_install_use_recommended
+
+- name: Merge user defined settings with defaults
+  set_fact:
+    cache_install: >
+      {{
+          __cache_install | deep_combine( cache_install| default({}, true) )
+      }}
+
+- name: Ensure a version has been defined
+  assert:
+    that: cache_install.version is defined
+    fail_msg: You must define a version of Cache to install.
+
+- name: Debug list of all Cache_Install_Manifest.+ Variables
+  debug:
+    msg: "{{ lookup('varnames', 'Cache_Install_Manifest.+', wantlist=True) }}"
+    verbosity: 1
+
+- name: Merge all Cache_Install_Manifest* Variables
+  set_fact:
+    Cache_Install_Manifest: >
+      {{
+          Cache_Install_Manifest | default({}, true) | deep_combine(vars[item] )
+      }}
+  loop: "{{ lookup('varnames', 'Cache_Install_Manifest.+', wantlist=True) }}"
+
+- name: Debug Cache_Install_Manifest variable
+  debug:
+    var: Cache_Install_Manifest
+    verbosity: 1

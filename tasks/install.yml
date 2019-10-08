@@ -1,0 +1,48 @@
+---
+- name: Deploy install manifest file
+  template:
+    dest: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64/ansible_manifest.xml"
+    src: templates/ansible_manifest.xml.j2
+    owner: root
+    group: system
+    mode: '644'
+
+- name: Cache Install Environment
+  debug:
+    var: cache_install.parameters
+    verbosity: 1
+
+- name: Run unattended install of Cache
+  command: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64/cinstall_silent"
+  environment: 
+    - "{{ cache_install.parameters }}"
+    - ISC_INSTALLER_MANIFEST: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64/ansible_manifest.xml"
+  args:
+    creates: "{{ cache_install.target_dir }}/cinstall.log"
+
+- name: Copy Cache license key
+  copy:
+    src: "{{ cache_install.local_files_dir }}/{{ cache_install.cache_key_file }}"
+    dest: "{{ cache_install.parameters.target_dir }}/mgr"
+  when: cache_install.cache_key_file is defined
+
+# I tried to use folded block scalar for the below line, but it didnt work.  Newlines were kept, broke the shell command
+#  According to the below issue, its a bug in pyyaml, not ansible:
+#  https://github.com/ansible/ansible/issues/48545
+- name: Configure default Cache instance
+  shell: ( {{ cache_install.ccontrol }} default | egrep -iq '^{{ cache_install.instance_name }}$' ) && echo 'nochange' || {{ cache_install.ccontrol }} default {{ cache_install.instance_name }}
+  register: authent_order
+  changed_when: authent_order.stdout != 'nochange'
+
+- name: Start Cache
+  command: "{{ cache_install.ccontrol }} start {{ cache_install.instance_name }} "
+  become: yes
+  tags: 
+    - start_cache
+
+# The start above doesnt always get the right 'start' user and we get permissions issues, so we run the manifest again manually
+- name: Manually run install manifest
+  command: "{{ cache_install.csession }} {{ cache_install.instance_name }} -B -U '%SYS' '##class(AnsibleDeploy.Deploy).setup()'"
+  become: yes
+  tags: 
+    - start_cache

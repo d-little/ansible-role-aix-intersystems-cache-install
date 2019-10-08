@@ -1,0 +1,259 @@
+Include %occInclude
+
+{% macro do_SystemSettings(_) %}
+  {# https://cedocs.intersystems.com/latest/csp/documatic/%25CSP.Documatic.cls?PAGE=CLASS&LIBRARY=%25SYS&PACKAGE=1&CLASSNAME=Config -#}
+  {% if Cache_Install_Manifest.SystemSettings is defined -%}
+    {% for setting in Cache_Install_Manifest.SystemSettings -%}
+      <SystemSetting Name="{{ setting }}" Value="{{ Cache_Install_Manifest.SystemSettings[setting] }}"/>
+    {% endfor -%}
+  {% endif %}
+{% endmacro %}
+
+
+{% macro do_Users(_) %}
+  {#- <User/> settings:
+    Username: Username. NB: Not a setting, is the key of the dict
+    PasswordVar: Name of variable containing user password. -> DEFAULTS To 'noPassw0rd' if not set!
+    Roles: List of roles to which user is assigned.
+    Fullname: User’s full name.
+    Namespace: User’s startup namespace.
+    Routine: User’s startup routine.
+    ExpirationDate: Date after which user login will be disabled.
+    ChangePassword: Require user to change password on next login?
+    Enabled: Is user enabled?
+    Comment: Optional comment.  #}
+  {# Behind the scenes this is using tInstaller.CreateUser, which appears to be idempotent. 
+      If the user exists we just need to ensure we dont supply a new default password. #}
+  <Var Name="default_password" Value="{{ default_password| default('noPassw0rd!') }}"/> 
+  <Log Level="2" Text="Ansible: Dealing with Users"/>
+  {% if Cache_Install_Manifest.Users is defined -%}
+    {% for user in Cache_Install_Manifest.Users -%}
+      {# Working with quotation marks inside these If stanzas is a _huge_ nightmare.
+      It's easier to just use vars... #}
+      <If Condition='(##class(Security.Users).Exists("{{ user }}")=0)'>
+        <Log Level="2" Text="Ansible: Creating new user: {{ user }}"/>  
+        <User Username="{{ user }}"
+          PasswordVar="default_password"
+          ChangePassword="{{ Cache_Install_Manifest.Users[user].ChangePassword |default('') }}" {# Require user to change password on next login? #}
+          Roles="{{ Cache_Install_Manifest.Users[user].Roles |default('') }}" {# List of roles to which user is assigned. #}
+          Fullname="{{ Cache_Install_Manifest.Users[user].Fullname |default('') }}" {# User’s full name. #}
+          Namespace="{{ Cache_Install_Manifest.Users[user].Namespace |default('') }}" {# User’s startup namespace. #}
+          Routine="{{ Cache_Install_Manifest.Users[user].Routine |default('') }}" {# User’s startup routine. #}
+          ExpirationDate="{{ Cache_Install_Manifest.Users[user].ExpirationDate |default('') }}" {# Date after which user login will be disabled. #}
+          Enabled="{{ Cache_Install_Manifest.Users[user].Enabled |default('') }}" {# Is user enabled? #}
+          Comment="{{ Cache_Install_Manifest.Users[user].Comment |default('') }}" {# Optional comment. #}
+        />
+      <Else/>
+        <Log Level="2" Text="Ansible: User Exists. Skipping: {{ user }}"/>
+      </If>
+    {% endfor -%}
+  <Log Level="2" Text="Ansible: Done processing Users section"/>
+  {% else %}
+    <Log Level="2" Text="Ansible: No Users Defined."/>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro do_Resources(_) %}
+  {# <Resource/> settings:
+    Name: Resource name - NB: Name is the key
+    Description: Resource description.
+    Permission: Public permissions. #}
+  <Log Level="2" Text="Ansible: Dealing with Resources"/>
+  {% if Cache_Install_Manifest.Resources is defined -%}
+    {% for resource in Cache_Install_Manifest.Resources -%}
+      <Log Level="2" Text="Ansible: Creating Resources: {{ resource }}"/>
+      <Resource Name="{{ resource }}"
+      {% for setting in Cache_Install_Manifest.Resources[resource] -%}
+        {{ setting }}="{{ Cache_Install_Manifest.Resources[resource][setting] }}"
+      {% endfor -%}
+      />
+    {% endfor -%}
+  {% else %}
+    <Log Level="2" Text="Ansible: No defined items in Resources section"/>
+  {% endif %}
+  <Log Level="2" Text="Ansible: Done processing Resources section"/>
+{% endmacro %}
+
+
+{% macro do_Roles(_) %}
+  {# <Role/> settings:
+    Name: Role name.   NB: Not a setting, is the key of the dict/
+    Description: Role description (cannot contain commas).
+    Resources: Privileges (resource-privilege pairs) held by the role.
+    RolesGranted: Roles granted by the named role.  #}
+  <Log Level="2" Text="Ansible: Dealing with Roles"/>
+  {% if Cache_Install_Manifest.Roles is defined -%}
+    {% for role in Cache_Install_Manifest.Roles -%}
+      <Log Level="2" Text="Ansible: Creating Roles: {{ role }}"/>
+      <Role Name="{{ role }}"
+      {% for setting in Cache_Install_Manifest.Roles[role] -%}
+        {{ setting }}="{{ Cache_Install_Manifest.Roles[role][setting] }}"
+      {% endfor -%}
+      />
+    {% endfor -%}
+  {% else %}
+    <Log Level="2" Text="Ansible: No defined items in Roles section"/>
+  {% endif %}
+  <Log Level="2" Text="Ansible: Done processing Roles section"/>
+{% endmacro %}
+
+
+{% macro do_URR(_) %}
+  {# Users Resources Roles #}
+  <Log Level="2" Text="Ansible: Dealing with Users/Resources/Roles"/>
+  {{ do_Users() }}
+  {{ do_Resources() }}
+  {{ do_Roles() }}
+  <Log Level="2" Text="Ansible: Done with Users/Resources/Roles"/>
+{% endmacro %}
+
+
+{% macro do_Databases(_) %}
+  {# <Database> -#}
+  {# BlockSize—Block size for database (4096, 8192, 16384, 32768, 65536).
+  ClusterMountMode—Mount database as a part of a cluster at startup?
+  Collation—Default collation for globals created in the database.
+  Create—Create a new database (yes/no/overwrite)? [yes]
+  Dir—Database directory.
+  Encrypted—Encrypt database?
+  EncryptionKeyID—ID of encryption key.
+  InitialSize—Initial size of the database, in MB.
+  ExpansionSize—Size in MB to expand the database by when required.
+  MaximumSize—Maximum size the database can expand to.
+  MountAtStartup—Mount when launching the installed instance?
+  MountRequired—Require mounting of database at every instance startup?
+  Name—Database name.
+  PublicPermissions—The Permission value to be assigned to the Resource if it must be created. It is ignored if the Resource already exists. Read-only or read-write.
+  Resource—Resource controlling access to the database.
+  StreamLocation—Directory in which streams associated with the database are stored. #}
+  {% if _ is defined -%}
+    {# If a database list was supplied, use that #}
+    <Log Level="2" Text="Ansible: Dealing with Supplied Databases"/>
+    {% set _db_Databases = _ %}
+  {% elif Cache_Install_Manifest.Databases is defined -%}
+    {# Default to the 'regular' database list #}
+    <Log Level="2" Text="Ansible: Dealing with default Databases"/>
+    {% set _db_Databases = Cache_Install_Manifest.Databases %}  
+  {% endif %}
+  {% if _db_Databases is defined and _db_Databases -%}
+    {% for database in _db_Databases -%}
+      <If Condition='(##class(Config.Databases).Exists("{{ database }}")=0)'> 
+        <Database Name="{{ database }}"
+        {% for item in _db_Databases[database] -%}
+          {{ item }}="{{ _db_Databases[database][item] }}"
+        {% endfor %}/>
+      </If>
+    {% endfor %}
+  {% endif %}
+  <Log Level="2" Text="Ansible: Done with these Databases"/>
+{% endmacro %}
+
+
+{% macro do_NSMappings(namespace) %}
+  {# Global/Class/Routine Mappings -#}
+  {% for _mapping_type in ['GlobalMappings', 'ClassMappings', 'RoutineMappings'] -%}
+    {% if Cache_Install_Manifest.Namespaces[namespace].Configuration[_mapping_type] is defined -%}
+      {% for mapping in Cache_Install_Manifest.Namespaces[namespace].Configuration[_mapping_type] -%}
+        <{% if _mapping_type == 'GlobalMappings' %}GlobalMapping
+        {%- elif _mapping_type =='ClassMappings' %}ClassMapping
+        {%- elif _mapping_type =='RoutineMappings' %}RoutineMapping{% endif %}
+        {% if _mapping_type == 'GlobalMappings' %}Global
+        {%- elif _mapping_type =='ClassMappings' %}Package
+        {%- elif _mapping_type =='RoutineMappings' %}Routines{% endif %}='{{ mapping }}'
+        {% for item in Cache_Install_Manifest.Namespaces[namespace].Configuration[_mapping_type][mapping] -%}
+          {{ item }}='{{ Cache_Install_Manifest.Namespaces[namespace].Configuration[_mapping_type][mapping][item] }}'
+        {% endfor -%}
+        />
+      {% endfor -%}
+    {% endif -%}
+  {% endfor -%}
+{% endmacro %}
+
+{% macro do_Namespaces(_) %}
+  <Log Level="2" Text="Ansible: Dealing with Namespaces"/>
+  {% if Cache_Install_Manifest.Namespaces is defined %}
+    {% for namespace in Cache_Install_Manifest.Namespaces -%}
+      <Log Level="2" Text="Ansible: Working on Namespace: {{ namespace }}"/>
+      <If Condition='(##class(Config.Namespaces).Exists("{{ namespace }}")=0)'>
+        <Log Level="2" Text="Ansible: Creating Namespace entry {{ namespace }}"/>
+        {% if Cache_Install_Manifest.Namespaces[namespace].Configuration is defined
+          and Cache_Install_Manifest.Namespaces[namespace].Configuration.Databases is defined %}
+          <Log Level="2" Text="Ansible: Dealing with Namespace defined Databases"/>
+          {{ do_Databases(Cache_Install_Manifest.Namespaces[namespace].Configuration.Databases) }}
+        {% endif %}
+        
+        {# Now create the namespace:
+          Name=Name of the namespace.
+          Create-Create a new namespace (yes/no/overwrite)? [yes]
+          Code-Database for code. (Default to name of Namespace)
+          Data=Database for data. (Default to name of Namespace)
+          Ensemble=Ensemble-enabled namespace? [0] #}
+        <Namespace Name='{{ namespace }}'
+          Create='{{ Cache_Install_Manifest.Namespaces[namespace].Create |default('yes')}}'
+          Code='{{ Cache_Install_Manifest.Namespaces[namespace].Code |default(namespace)}}'
+          Data='{{ Cache_Install_Manifest.Namespaces[namespace].Data |default(namespace)}}'
+          Ensemble='{{ Cache_Install_Manifest.Namespaces[namespace].Ensemble |default('0')}}'
+        >
+        {# Old loop method, remove eventually:
+        {% for item in Cache_Install_Manifest.Namespaces[namespace] -%}  
+          {% if Cache_Install_Manifest.Namespaces[namespace][item] is string -%} 
+            {{ item }}="{{ Cache_Install_Manifest.Namespaces[namespace][item] }}" 
+          {% endif -%}
+        {% endfor %}> #}
+
+        {# The class compiler for this seems to expect taht Configuration will at least exist,
+        even if it is empty.  The Namespae wont be created without the <Configuration> section. #}
+        <Configuration>
+          {% if Cache_Install_Manifest.Namespaces[namespace].Configuration is defined %}
+            {{ do_NSMappings(namespace) }}
+          {% endif %}
+        </Configuration>
+        </Namespace>
+      </If>
+      <Log Level="2" Text="Ansible: Finished on Namespace: {{ namespace }}"/>
+    {% endfor %}
+  {% endif %}
+<Log Level="2" Text="Ansible: Done with Namespaces"/>
+{% endmacro %}
+
+
+Class AnsibleDeploy.Deploy
+{
+  XData Deploy [ XMLNamespace = INSTALLER ]
+  {
+    <Manifest>
+      {# Get this working one day... #}
+      {# Set flag to ensure this manifest is only run once #}
+      {#
+      <If Condition='($DATA(^zInstallManifestDeployed) = 1)'>
+        <Log Level="2" Text="Ansible: The install manifest has already run.  We do not currently support post-install configuration."/>
+        <Error Status="$$$AlreadyRun">
+          <Arg Value="InstallManifestAlreadyRun"/>
+        </Error>
+      </If>
+      #{ SET ^zInstallManifestDeployed=$H } #}
+
+      {# <SystemSetting/> -#}
+      {{ do_SystemSettings() }}
+
+      {# URR(Users Resources Roles) #}
+      {{ do_URR() }}
+
+      {# <Database> -#}
+      {{ do_Databases() }}
+
+      {# <Namespace> -#}
+      {{ do_Namespaces() }}
+    </Manifest>
+  }
+
+  ClassMethod setup(ByRef pVars, pLogLevel As %Integer = 3, 
+    pInstaller As %Installer.Installer, 
+    pLogger As %Installer.AbstractLogger) 
+    As %Status [ CodeMode = objectgenerator, Internal ]
+  {
+    #; Let XGL document generate code for this method. 
+    Quit ##class(%Installer.Manifest).%Generate(%compiledclass, %code, "Deploy")
+  }
+}

@@ -1,0 +1,102 @@
+---
+# ensure rsync is installed
+- name: rsync is installed
+  package:
+    state: present
+    name: rsync
+
+# Create users+groups
+# Create temporary + install directories
+- name: Create AIX Groups and Users
+  block:
+  - name: Create Cache instance 'allowed managers' group
+    group:
+      name: "{{ cache_install.users.group_allowed.name }}"
+      gid: "{{ cache_install.users.group_allowed.gid }}"
+      state: present
+
+  - name: Create Cache instance 'effective owner' group
+    group:
+      name: "{{ cache_install.users.effective_group.name }}"
+      gid: "{{ cache_install.users.effective_group.gid }}"
+      state: present
+
+  - name: Create Cache instance owner user
+    user:
+      name: "{{ cache_install.users.owner.name }}"
+      comment: "cacheusr"
+      group: "{{ cache_install.users.group_allowed.name }}"
+    when: cache_install.users.owner.name != 'root'
+
+  - name: Create instance 'effective user' account
+    user:
+      name: "{{ cache_install.users.owner.name }}"
+      comment: "cacheusr"
+      group: "{{ cache_install.users.group_allowed.name }}"
+    when: cache_install.users.owner.name != 'root'
+
+- name: Create install directory + mgr directories (in case they're filesystems)
+  file:
+    path: "{{ cache_install.target_dir }}/{{ item }}"
+    group: "{{ cache_install.users.effective_group.name| default(omit) }}"
+    mode: 0775 
+    state: directory
+  loop:
+    - ''
+    - mgr
+    - mgr/cache
+    - mgr/cachetemp
+
+- name: Check to see if installer has been 'staged' already
+  stat:
+    path: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64/cinstall_silent"
+    get_checksum: no
+  register: installer_status
+
+- name: Check free space in 'staging' filesystem
+  block:
+    - name: Create Caché install temp directory
+      file:
+        path: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/"
+        mode: 0777
+        state: directory
+    - name: Fetching free space in 'staging' filesystem  
+      shell: df -PmcF "%f" {{ cache_install.temp_dir| quote }}|cut -d':' -f3|tail -1|xargs
+      register: cache_install_temp_freespace
+      changed_when: no  # We're only fetching, never changed.
+      #failed_when: cache_install_temp_freespace.stdout|int is not number  # Cant get this working, will revisit one day
+    - name: Ensuring enough free space in 'staging' filesystem
+      assert:
+        that:
+          - cache_install_temp_freespace.stdout|int > 2048
+        fail_msg: Temporary directory ({{ cache_install.temp_dir }}) filesystem  does not have enough free space ({{ cache_install_temp_freespace.stdout }} < 2GB)
+  when:
+    - not installer_status.stat.exists
+
+- block:
+  - name: Copy Install Archive
+    synchronize:
+      src: "{{ cache_install.local_files_dir }}/cache-{{ cache_install.version }}-ppc64.tar.gz"
+      dest: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64.tar.gz"
+      # group: "{{ cache_install.users.owner.name }}"
+      # owner: "{{ cache_install.users.effective_group.name }}"
+      mode: push
+  - name: Unzip Installer
+    command: gunzip {{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64.tar.gz
+    args:
+      removes: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64.tar.gz"
+      creates: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64.tar"
+  - name: Extract Installer
+    command: |-
+      tar 
+      -xf {{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64.tar
+      -C {{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/
+    args:
+      creates: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64/"
+      warn: no
+  - name: Remove Installer Tarfile
+    file:
+      state: absent
+      path: "{{ cache_install.temp_dir }}/cache-{{ cache_install.version }}/cache-{{ cache_install.version }}-ppc64.tar"
+  when:
+    - not installer_status.stat.exists

@@ -1,0 +1,9 @@
+---
+#TO DO:
+# If 'validation' checks are enabled, ensure the following before running an install:
+# Ensure that a filesystem exists and is unique for each of:
+#   cachesys
+#   jnla
+#   jnlb
+#   wij
+#   cachetemp

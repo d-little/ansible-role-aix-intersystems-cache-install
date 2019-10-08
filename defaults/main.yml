@@ -1,0 +1,65 @@
+---
+cache_install_use_recommended: yes
+
+__cache_install_user_uid: 10077
+__cache_install_recomended:
+  # A collection of settings I think 'should' be set
+  users:
+    root: root
+    owner:
+      name: cacheusr
+      uid: "{{ __cache_install_user_uid }}"
+      # group: cacheusr - Will use cache_install.users.group_allowed.name
+    effective_user:
+      name: cacheusr
+      uid: "{{ __cache_install_user_uid }}"
+      group: cacheusr
+    effective_group:
+      name: cacheusr
+      gid: "{{ __cache_install_user_uid }}"
+    group_allowed:
+      name: cacheusr
+      gid: "{{ __cache_install_user_uid }}"
+  parameters:
+    ISC_PACKAGE_STARTCACHE: 'N'
+    ISC_PACKAGE_MGRUSER: cacheusr
+    ISC_PACKAGE_MGRGROUP: cacheusr
+#  ISC_PACKAGE_INSTANCENAME="<instancename>"
+#  ISC_PACKAGE_INSTALLDIR="<installdir>"
+#  ISC_PACKAGE_PLATFORM="<platform>" 
+#  ISC_PACKAGE_UNICODE="Y"|"N"
+#  ISC_PACKAGE_INITIAL_SECURITY="Minimal"|"Normal"|"Locked Down"
+#  ISC_PACKAGE_MGRUSER="<instanceowner>" 
+#  ISC_PACKAGE_MGRGROUP="<group>"
+#  ISC_PACKAGE_USER_PASSWORD="<pwd>"  
+#  ISC_PACKAGE_CSPSYSTEM_PASSWORD="<pwd>"
+#  ISC_PACKAGE_CACHEUSER="<user>" 
+#  ISC_PACKAGE_CACHEGROUP="<group>"
+#  ISC_PACKAGE_CLIENT_COMPONENTS="<component1> <component2> ..."
+#  ISC_PACKAGE_STARTCACHE="Y"|"N"
+
+__cache_install:
+  version: ''   # Must be 'full' release number, as found in the cache-{{version}}.tar.gz file
+                # eg: cache-2018.1.2.309.5-ppc64.tar.gz
+  local_files_dir: "files/"  # Local ansible directory where the cache tar.gz files live
+  temp_dir: /tmp/cache/  # Directory on target host that install files should be stored  
+  target_dir: /usr/cachesys/  # Where to install the Cache instance
+  instance_name: cache
+  ccontrol: ccontrol
+  csession: csession
+  cache_key_file:
+  users:
+  parameters:
+    # Only required parameters have set defaults.
+    #  'Suggested Defaults' can be used with the {{ cache_install_use_recommended }} flag
+    ISC_PACKAGE_INSTANCENAME: cache
+    ISC_PACKAGE_INSTALLDIR: /usr/cachesys/
+    ISC_INSTALLER_MANIFEST:
+    ISC_INSTALLER_LOGFILE: installer_log
+    ISC_INSTALLER_LOGLEVEL: 3
+
+Cache_Install_Manifest_RecommendedAIXDefaults:
+  SystemSettings:
+    Config.config.globals8kb: "{{ (ansible_facts.memtotal_mb / 3) |int }}"
+    Config.config.gmheap: "{{ 30000 * ( ( ansible_facts.processor_cores|int * ansible_facts.devices.proc0.attributes.smt_threads|int ) + 1) + 21184+40960}}"
+    Config.config.locksiz: 41943040

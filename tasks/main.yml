@@ -1,0 +1,29 @@
+---
+- include_tasks: variables.yml
+
+- name: Check status of existing cache instances
+  block:
+  - name: Check to see if `ccontrol` command exists
+    shell: >
+      ( which {{ cache_install.ccontrol }} >/dev/null 2>&1 ) && echo 'installed' || echo 'not_installed'
+    register: ccontrol_status
+    failed_when: no
+    changed_when: no  # Dont fail, dont change, we just want the command output
+  - name: Confirm Cache instance does not already exist (Role does not perform post-install configuration)
+    shell: ( {{ cache_install.ccontrol }} qlist {{ cache_install.instance_name }} >/dev/null 2>&1 ) && echo 'exists' || echo 'not_exists'
+    register: ccontrol_cache_instance
+    when: ccontrol_status.stdout == "installed"
+    changed_when: no  # We're only fetching, never changed.
+  - debug:
+      verbosity: 2
+      var: ccontrol_cache_instance
+
+- include_tasks: pre_install.yml
+  when: ccontrol_cache_instance.stdout != 'exists'
+
+- include_tasks: install.yml
+  when: ccontrol_cache_instance.stdout != 'exists'
+
+- name: Register that this role has run
+  set_fact: intersystems_aix_cache_install=true
+  when: intersystems_aix_cache_install is not defined

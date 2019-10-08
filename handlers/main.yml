@@ -1,0 +1,9 @@
+---
+- name: Restart Cache
+  command: "{{ CCONTROL| default 'ccontrol'}} stop {{ cache_install.install_parameters.ISC_PACKAGE_INSTANCENAME }} restart quietly"
+  listen: "restart database"
+
+- name: restart apache2
+  service:
+    name: apache2
+    state: restarted
